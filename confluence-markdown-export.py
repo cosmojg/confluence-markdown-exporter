@@ -113,11 +113,11 @@ class Exporter:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("url", type=str, help="The url to the confluence instance")
-    parser.add_argument("username", type=str, help="The username")
-    parser.add_argument("token", type=str, help="The access token to Confluence")
-    parser.add_argument("out_dir", type=str, help="The directory to output the files to")
-    parser.add_argument("--space", type=str, required=False, default=None, help="Spaces to export")
+    parser.add_argument("url", type=str, help="link to Confluence instance")
+    parser.add_argument("username", type=str, help="username")
+    parser.add_argument("token", type=str, help="personal access token or password")
+    parser.add_argument("out_dir", type=str, required=False, default="./output_dir", help="output directory")
+    parser.add_argument("--space", type=str, required=False, default=None, help="space(s) to export")
     args = parser.parse_args()
 
     dumper = Exporter(url=args.url, username=args.username, token=args.token, out_dir=args.out_dir,
