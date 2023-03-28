@@ -33,7 +33,8 @@ class Exporter:
 
     def __sanitize_filename(self, document_name_raw):
         document_name = document_name_raw
-        for invalid in ["..", "/"]:
+        document_name = document_name.replace(".doc", "xdoc")
+        for invalid in ["..", ".", "/"]:
             if invalid in document_name:
                 print(
                     (
@@ -42,6 +43,7 @@ class Exporter:
                     ),
                 )
                 document_name = document_name.replace(invalid, "_")
+        document_name = document_name.replace("xdoc", ".doc")
         return document_name
 
     def __dump_page(self, src_id, parents):
