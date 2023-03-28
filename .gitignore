@@ -1,4 +1,13 @@
+*.doc
+*.docx
+*.md
+.DS_Store
+out/
 output/
+out_dir/
+output_dir/
+out_directory/
+output_directory/
 .idea/
 
 # Byte-compiled / optimized / DLL files

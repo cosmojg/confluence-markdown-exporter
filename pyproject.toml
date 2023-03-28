@@ -1,0 +1,12 @@
+[tool.black]
+target-version = ["py311"]
+preview = true
+
+[tool.ruff]
+target-version = "py311"
+fix = true
+select = ["ALL"]
+unfixable = ["T20", "ERA"]
+
+[tool.ruff.pydocstyle]
+convention = "google"

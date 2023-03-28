@@ -1,6 +1,5 @@
 atlassian
 atlassian_python_api
-beautifulsoup4
 doc2docx
 pypandoc
 requests
