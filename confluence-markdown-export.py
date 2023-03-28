@@ -1,6 +1,7 @@
 import os
 import argparse
 from urllib.parse import urlparse, urlunparse
+from time import sleep
 
 import requests
 import bs4
@@ -32,9 +33,7 @@ class Exporter:
         document_name = document_name_raw
         for invalid in ["..", "/"]:
             if invalid in document_name:
-                print("Dangerous page title: \"{}\", \"{}\" found, replacing it with \"_\"".format(
-                    document_name,
-                    invalid))
+                print(f'Dangerous page title: "{document_name}", "{invalid}" found, replacing it with "_"')
                 document_name = document_name.replace(invalid, "_")
         return document_name
 
@@ -82,9 +81,28 @@ class Exporter:
         print(f"Writing {page_filename_docx}")
         doc2docx.convert(page_filename_doc, page_filename_docx)
 
-        print(f"Writing {page_filename_md}")
-        pypandoc.convert_file(page_filename_docx, "gfm", outputfile=page_filename_md,
-                              extra_args=["--extract-media", page_filename_media])
+        attempt = 1
+        wait = 2
+        for i in range(0, 4):
+            try:
+                print(f"Writing {page_filename_md} (Attempt #{attempt})")
+                pypandoc.convert_file(page_filename_docx, "gfm",
+                                      outputfile=page_filename_md,
+                                      extra_args=["--extract-media",
+                                          page_filename_media])
+                error = None
+            except Exception as e:
+                error = str(e)
+
+            if error:
+                print(error)
+                print(f"Waiting {wait} seconds before trying again...")
+                sleep(wait)
+                wait *= 2
+                attempt += 1
+            else:
+                break
+
 
         self.__seen.add(page_id)
 
