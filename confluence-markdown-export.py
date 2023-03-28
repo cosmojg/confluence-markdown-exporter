@@ -121,5 +121,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     dumper = Exporter(url=args.url, username=args.username, token=args.token, out_dir=args.out_dir,
-                      space=args.space, no_attach=args.no_attach)
+                      space=args.space)
     dumper.dump()
