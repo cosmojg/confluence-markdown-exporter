@@ -116,7 +116,7 @@ if __name__ == "__main__":
     parser.add_argument("url", type=str, help="link to Confluence instance")
     parser.add_argument("username", type=str, help="username")
     parser.add_argument("token", type=str, help="personal access token or password")
-    parser.add_argument("out_dir", type=str, required=False, default="./output_dir", help="output directory")
+    parser.add_argument("out_dir", type=str, help="output directory")
     parser.add_argument("--space", type=str, required=False, default=None, help="space(s) to export")
     args = parser.parse_args()
 
