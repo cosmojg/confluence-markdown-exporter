@@ -1,5 +1,7 @@
 import argparse
 import os
+import re
+from pathlib import Path
 from time import sleep
 from urllib.parse import urlparse, urlunparse
 
@@ -32,14 +34,13 @@ class Exporter:
         self.__space = space
 
     def __sanitize_filename(self, document_name_raw):
-        document_name = document_name_raw
-        document_name = document_name.replace(".doc", "xdoc")
-        for invalid in ["..", ".", "/"]:
+        document_name = document_name_raw.replace(".doc", "xdoc")
+        for invalid in [".", "/", "|", "[", "]"]:
             if invalid in document_name:
                 print(
                     (
-                        f'Dangerous page title: "{document_name}", "{invalid}" found,'
-                        ' replacing it with "_"'
+                        f'Dangerous page title: "{document_name_raw}", "{invalid}"'
+                        ' found, replacing it with "_"'
                     ),
                 )
                 document_name = document_name.replace(invalid, "_")
@@ -68,6 +69,12 @@ class Exporter:
 
         page_location = [*sanitized_parents, sanitized_filename]
         page_filename_doc = os.path.join(self.__out_dir, *page_location)
+        if len(page_filename_doc) > 250:
+            print(f"(ERROR) Path too long: {page_filename_doc}")
+            doc_basename = os.path.basename(page_filename_doc)
+            page_filename_doc.replace(doc_basename, "".join([word[0].upper() for word in filter(None, re.split("[_ -]", doc_basename))] + [".doc"]))
+            print(f"(FIX) New path: {page_filename_doc}")
+
         page_filename_docx = page_filename_doc.replace(".doc", ".docx")
         page_filename_md = page_filename_doc.replace(".doc", ".md")
         page_filename_media = page_filename_doc.replace(".doc", "_media")
@@ -75,43 +82,50 @@ class Exporter:
         page_output_dir = os.path.dirname(page_filename_doc)
         os.makedirs(page_output_dir, exist_ok=True)
 
-        print(f"Saving to {' / '.join(page_location)}")
-        r = requests.get(
-            f"https://confluence.bostonfusion.com/exportword?pageId={page_id}",
-            auth=(self.__username, self.__token),
-            stream=True,
-        )
+        # Download .doc from Confluence
+        if not Path(page_filename_doc).is_file():
+            print(f"Downloading {' / '.join(page_location)}")
+            r = requests.get(
+                f"https://confluence.bostonfusion.com/exportword?pageId={page_id}",
+                auth=(self.__username, self.__token),
+                stream=True,
+            )
+            print(f"Writing {page_filename_doc}")
+            with open(page_filename_doc, "wb") as f:
+                f.write(r.content)
 
-        print(f"Writing {page_filename_doc}")
-        with open(page_filename_doc, "wb") as f:
-            f.write(r.content)
+        # Convert .doc to .docx
+        if not Path(page_filename_docx).is_file():
+            print(f"Writing {page_filename_docx}")
+            doc2docx.convert(page_filename_doc, page_filename_docx)
 
-        print(f"Writing {page_filename_docx}")
-        doc2docx.convert(page_filename_doc, page_filename_docx)
+        # Attempt to convert .docx to .md
+        if not Path(page_filename_md).is_file():
+            attempt = 1
+            wait = 2
+            for _i in range(4):
+                try:
+                    print(f"Writing {page_filename_md} (Attempt #{attempt})")
+                    pypandoc.convert_file(
+                        page_filename_docx,
+                        "gfm",
+                        outputfile=page_filename_md,
+                        extra_args=["--extract-media", page_filename_media],
+                    )
+                    error = None
+                except Exception as e:
+                    error = str(e)
 
-        attempt = 1
-        wait = 2
-        for _i in range(4):
-            try:
-                print(f"Writing {page_filename_md} (Attempt #{attempt})")
-                pypandoc.convert_file(
-                    page_filename_docx,
-                    "gfm",
-                    outputfile=page_filename_md,
-                    extra_args=["--extract-media", page_filename_media],
-                )
-                error = None
-            except Exception as e:
-                error = str(e)
+                if not error:
+                    break
 
-            if not error:
-                break
+                print(error)
+                print(f"Waiting {wait} seconds before trying again...")
+                sleep(wait)
+                wait *= 2
+                attempt += 1
 
-            print(error)
-            print(f"Waiting {wait} seconds before trying again...")
-            sleep(wait)
-            wait *= 2
-            attempt += 1
+        # Mark page as seen
         self.__seen.add(page_id)
 
         # recurse to process child nodes
