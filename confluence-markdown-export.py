@@ -1,9 +1,12 @@
 import argparse
 import os
+import sys
 import re
 from pathlib import Path
 from time import sleep
 from urllib.parse import urlparse, urlunparse
+import tempfile
+import shutil
 
 import doc2docx
 import pypandoc
@@ -33,24 +36,52 @@ class Exporter:
         self.__seen = set()
         self.__space = space
 
-    def __sanitize_filename(self, document_name_raw):
-        document_name = document_name_raw.replace(".doc", "xdoc")
-        for invalid in [".", "/", "|", "[", "]"]:
-            if invalid in document_name:
-                print(
-                    (
-                        f'Dangerous page title: "{document_name_raw}", "{invalid}"'
-                        ' found, replacing it with "_"'
-                    ),
-                )
-                document_name = document_name.replace(invalid, "_")
-        document_name = document_name.replace("xdoc", ".doc")
-        return document_name
+    def __sanitize(self, page_title):
+        page_title = re.sub("[\\\\/\[\]]+", "_", page_title)
+        page_title = re.sub("\.\.+", ".", page_title)
+        page_title = re.sub("__+", "_", page_title)
+        page_title = re.sub("\s\s+", " ", page_title)
+        page_title = re.sub("_(_|\s)+_", "_", page_title)
+        page_title = page_title.strip("_. ")
+        return page_title
+
+    def __download(self, page_id, page_filename_doc):
+        print(f"Generating {page_filename_doc}")
+        r = requests.get(
+            f"https://confluence.bostonfusion.com/exportword?pageId={page_id}",
+            auth=(self.__username, self.__token),
+            stream=True,
+        )
+        with open(page_filename_doc, "wb") as f:
+            f.write(r.content)
+
+    def __modernize(self, page_filename_doc, page_filename_docx):
+        print(f"Generating {page_filename_docx}")
+        if sys.platform == "darwin":
+            tempdir = tempfile.TemporaryDirectory(dir=f"{Path.home()}/Library/Containers/com.microsoft.Word/Data/Documents")
+        elif sys.platform == "win32":
+            tempdir = tempfile.TemporaryDirectory(dir=self.__out_dir)
+        else:
+            raise NotImplementedError("Incompatible operating system (Microsoft Word must be installed)")
+        tempdoc = os.path.join(tempdir.name, "x.doc")
+        tempdocx = tempdoc.replace(".doc", ".docx")
+        shutil.copyfile(page_filename_doc, tempdoc)
+        doc2docx.convert(tempdoc, tempdocx)
+        shutil.copyfile(tempdocx, page_filename_docx)
+        tempdir.cleanup()
+
+    def __convert(self, page_filename_docx, page_filename_md, page_filename_media):
+        print(f"Generating {page_filename_md}")
+        pypandoc.convert_file(
+            page_filename_docx,
+            "gfm",
+            outputfile=page_filename_md,
+            extra_args=["--extract-media", page_filename_media],
+        )
 
     def __dump_page(self, src_id, parents):
         if src_id in self.__seen:
-            # this could theoretically happen if Page IDs are not unique or there is a
-            # circle
+            # this could theoretically happen if Page IDs are not unique or there is a circle
             raise ExportException("Duplicate Page ID Found!")
 
         page = self.__confluence.get_page_by_id(src_id, expand="body.storage")
@@ -61,69 +92,36 @@ class Exporter:
         child_ids = self.__confluence.get_child_id_list(page_id)
 
         # save all files as .doc for now, we will convert them later
-        document_name = "home" + ".doc" if len(child_ids) > 0 else f"{page_title}.doc"
-
         # make some rudimentary checks, to prevent trivial errors
-        sanitized_filename = self.__sanitize_filename(document_name)
-        sanitized_parents = list(map(self.__sanitize_filename, parents))
-
-        page_location = [*sanitized_parents, sanitized_filename]
-        page_filename_doc = os.path.join(self.__out_dir, *page_location)
-        if len(page_filename_doc) > 250:
-            print(f"(ERROR) Path too long: {page_filename_doc}")
-            doc_basename = os.path.basename(page_filename_doc)
-            page_filename_doc.replace(doc_basename, "".join([word[0].upper() for word in filter(None, re.split("[_ -]", doc_basename))] + [".doc"]))
-            print(f"(FIX) New path: {page_filename_doc}")
-
+        sanitized_parents = list(map(self.__sanitize, parents))
+        page_location = [*sanitized_parents, self.__sanitize(page_title)]
+        page_filename_doc = os.path.join(self.__out_dir, *page_location) + ".doc"
         page_filename_docx = page_filename_doc.replace(".doc", ".docx")
         page_filename_md = page_filename_doc.replace(".doc", ".md")
-        page_filename_media = page_filename_doc.replace(".doc", "_media")
+        page_filename_media = page_filename_doc.removesuffix(".doc")
 
         page_output_dir = os.path.dirname(page_filename_doc)
         os.makedirs(page_output_dir, exist_ok=True)
 
         # Download .doc from Confluence
         if not Path(page_filename_doc).is_file():
-            print(f"Downloading {' / '.join(page_location)}")
-            r = requests.get(
-                f"https://confluence.bostonfusion.com/exportword?pageId={page_id}",
-                auth=(self.__username, self.__token),
-                stream=True,
-            )
-            print(f"Writing {page_filename_doc}")
-            with open(page_filename_doc, "wb") as f:
-                f.write(r.content)
+            self.__download(page_id, page_filename_doc)
 
         # Convert .doc to .docx
         if not Path(page_filename_docx).is_file():
-            print(f"Writing {page_filename_docx}")
-            doc2docx.convert(page_filename_doc, page_filename_docx)
+            self.__modernize(page_filename_doc, page_filename_docx)
 
         # Attempt to convert .docx to .md
         if not Path(page_filename_md).is_file():
-            attempt = 1
-            wait = 2
-            for _i in range(4):
-                try:
-                    print(f"Writing {page_filename_md} (Attempt #{attempt})")
-                    pypandoc.convert_file(
-                        page_filename_docx,
-                        "gfm",
-                        outputfile=page_filename_md,
-                        extra_args=["--extract-media", page_filename_media],
-                    )
-                    error = None
-                except Exception as e:
-                    error = str(e)
-
-                if not error:
-                    break
-
-                print(error)
-                print(f"Waiting {wait} seconds before trying again...")
-                sleep(wait)
-                wait *= 2
-                attempt += 1
+            try:
+                self.__convert(page_filename_docx, page_filename_md, page_filename_media)
+            except Exception as e:
+                print(e)
+                print(f"Waiting 10 seconds before trying again...")
+                sleep(10)
+                self.__download(page_id, page_filename_doc)
+                self.__modernize(page_filename_doc, page_filename_docx)
+                self.__convert(page_filename_docx, page_filename_md, page_filename_media)
 
         # Mark page as seen
         self.__seen.add(page_id)
