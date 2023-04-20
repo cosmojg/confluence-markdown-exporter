@@ -1,12 +1,12 @@
 import argparse
 import os
-import sys
 import re
+import shutil
+import sys
+import tempfile
 from pathlib import Path
 from time import sleep
 from urllib.parse import urlparse, urlunparse
-import tempfile
-import shutil
 
 import doc2docx
 import pypandoc
@@ -37,11 +37,11 @@ class Exporter:
         self.__space = space
 
     def __sanitize(self, page_title):
-        page_title = re.sub("[\\\\/\[\]]+", "_", page_title)
-        page_title = re.sub("\.\.+", ".", page_title)
+        page_title = re.sub("[\\\\/\\[\\]]+", "_", page_title)
+        page_title = re.sub("\\.\\.+", ".", page_title)
         page_title = re.sub("__+", "_", page_title)
-        page_title = re.sub("\s\s+", " ", page_title)
-        page_title = re.sub("_(_|\s)+_", "_", page_title)
+        page_title = re.sub("\\s\\s+", " ", page_title)
+        page_title = re.sub("_(_|\\s)+_", "_", page_title)
         page_title = page_title.strip("_. ")
         return page_title
 
@@ -58,16 +58,24 @@ class Exporter:
     def __modernize(self, page_filename_doc, page_filename_docx):
         print(f"Generating {page_filename_docx}")
         if sys.platform == "darwin":
-            tempdir = tempfile.TemporaryDirectory(dir=f"{Path.home()}/Library/Containers/com.microsoft.Word/Data/Documents")
+            tempdir = tempfile.TemporaryDirectory(
+                dir=f"{Path.home()}/Library/Containers/com.microsoft.Word/Data/Documents",
+            )
         elif sys.platform == "win32":
             tempdir = tempfile.TemporaryDirectory(dir=self.__out_dir)
         else:
-            raise NotImplementedError("Incompatible operating system (Microsoft Word must be installed)")
+            raise NotImplementedError(
+                "Incompatible operating system (Microsoft Word must be installed)",
+            )
         tempdoc = os.path.join(tempdir.name, "x.doc")
         tempdocx = tempdoc.replace(".doc", ".docx")
         shutil.copyfile(page_filename_doc, tempdoc)
         doc2docx.convert(tempdoc, tempdocx)
-        shutil.copyfile(tempdocx, page_filename_docx)
+        try:
+            shutil.copyfile(tempdocx, page_filename_docx)
+        except Exception:
+            tempdir.cleanup()
+            raise
         tempdir.cleanup()
 
     def __convert(self, page_filename_docx, page_filename_md, page_filename_media):
@@ -105,23 +113,44 @@ class Exporter:
 
         # Download .doc from Confluence
         if not Path(page_filename_doc).is_file():
-            self.__download(page_id, page_filename_doc)
+            try:
+                self.__download(page_id, page_filename_doc)
+            except Exception as e:
+                print(e)
+                print("Waiting 10 seconds before trying again...")
+                sleep(10)
+                self.__download(page_id, page_filename_doc)
 
         # Convert .doc to .docx
         if not Path(page_filename_docx).is_file():
-            self.__modernize(page_filename_doc, page_filename_docx)
+            try:
+                self.__modernize(page_filename_doc, page_filename_docx)
+            except Exception as e:
+                print(e)
+                print("Waiting 10 seconds before trying again...")
+                sleep(10)
+                self.__download(page_id, page_filename_doc)
+                self.__modernize(page_filename_doc, page_filename_docx)
 
         # Attempt to convert .docx to .md
         if not Path(page_filename_md).is_file():
             try:
-                self.__convert(page_filename_docx, page_filename_md, page_filename_media)
+                self.__convert(
+                    page_filename_docx,
+                    page_filename_md,
+                    page_filename_media,
+                )
             except Exception as e:
                 print(e)
-                print(f"Waiting 10 seconds before trying again...")
+                print("Waiting 10 seconds before trying again...")
                 sleep(10)
                 self.__download(page_id, page_filename_doc)
                 self.__modernize(page_filename_doc, page_filename_docx)
-                self.__convert(page_filename_docx, page_filename_md, page_filename_media)
+                self.__convert(
+                    page_filename_docx,
+                    page_filename_md,
+                    page_filename_media,
+                )
 
         # Mark page as seen
         self.__seen.add(page_id)
