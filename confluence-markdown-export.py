@@ -103,7 +103,7 @@ class Exporter:
         # make some rudimentary checks, to prevent trivial errors
         sanitized_parents = list(map(self.__sanitize, parents))
         page_location = [*sanitized_parents, self.__sanitize(page_title)]
-        page_filename_doc = os.path.join(self.__out_dir, *page_location) + ".doc"
+        page_filename_doc = f"{os.path.join(self.__out_dir, *page_location)}.doc"
         page_filename_docx = page_filename_doc.replace(".doc", ".docx")
         page_filename_md = page_filename_doc.replace(".doc", ".md")
         page_filename_media = page_filename_doc.removesuffix(".doc")
