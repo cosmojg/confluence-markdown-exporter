@@ -37,12 +37,12 @@ class Exporter:
         self.__space = space
 
     def __sanitize(self, page_title):
-        page_title = re.sub("[\\\\/\\[\\]]+", "_", page_title)
+        page_title = re.sub("[\\\\/\\[\\] ]+", "-", page_title)
+        page_title = re.sub("\\s+", "-", page_title)
         page_title = re.sub("\\.\\.+", ".", page_title)
-        page_title = re.sub("__+", "_", page_title)
-        page_title = re.sub("\\s\\s+", " ", page_title)
-        page_title = re.sub("_(_|\\s)+_", "_", page_title)
-        page_title = page_title.strip("_. ")
+        page_title = re.sub("--+", "-", page_title)
+        page_title = re.sub("-(-|\\s)+-", "-", page_title)
+        page_title = page_title.strip("-. ")
         return page_title
 
     def __download(self, page_id, page_filename_doc):
@@ -86,6 +86,10 @@ class Exporter:
             outputfile=page_filename_md,
             extra_args=["--extract-media", page_filename_media],
         )
+        md_path = Path(page_filename_md)
+        md_text = md_path.read_text()
+        md_text = md_text.replace(f"{str(md_path.parent)}/", "")
+        md_path.write_text(md_text)
 
     def __dump_page(self, src_id, parents):
         if src_id in self.__seen:
