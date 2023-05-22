@@ -64,8 +64,9 @@ class Exporter:
         elif sys.platform == "win32":
             tempdir = tempfile.TemporaryDirectory(dir=self.__out_dir)
         else:
+            msg = "Incompatible operating system (Microsoft Word must be installed)"
             raise NotImplementedError(
-                "Incompatible operating system (Microsoft Word must be installed)",
+                msg,
             )
         tempdoc = os.path.join(tempdir.name, "x.doc")
         tempdocx = tempdoc.replace(".doc", ".docx")
@@ -88,13 +89,14 @@ class Exporter:
         )
         md_path = Path(page_filename_md)
         md_text = md_path.read_text()
-        md_text = md_text.replace(f"{str(md_path.parent)}/", "")
+        md_text = md_text.replace(f"{md_path.parent!s}/", "")
         md_path.write_text(md_text)
 
     def __dump_page(self, src_id, parents):
         if src_id in self.__seen:
             # this could theoretically happen if Page IDs are not unique or there is a circle
-            raise ExportException("Duplicate Page ID Found!")
+            msg = "Duplicate Page ID Found!"
+            raise ExportException(msg)
 
         page = self.__confluence.get_page_by_id(src_id, expand="body.storage")
         page_title = page["title"]
@@ -114,6 +116,7 @@ class Exporter:
 
         page_output_dir = os.path.dirname(page_filename_doc)
         os.makedirs(page_output_dir, exist_ok=True)
+        (Path(page_output_dir) / "home.md").write_text(f"# {page_title}\n")
 
         # Download .doc from Confluence
         if not Path(page_filename_doc).is_file():
@@ -172,7 +175,17 @@ class Exporter:
         else:
             # homepage found, recurse from there
             homepage_id = space["homepage"]["id"]
-            self.__dump_page(homepage_id, parents=[space_key])
+            page = self.__confluence.get_page_by_id(homepage_id, expand="body.storage")
+            page_title = page["title"]
+            page_id = page["id"]
+            self.__confluence.get_child_id_list(page_id)
+            sanitized_parents = list(map(self.__sanitize, [space_key]))
+            page_location = [*sanitized_parents, "home"]
+            home_md = f"{os.path.join(self.__out_dir, *page_location)}.md"
+            page_output_dir = os.path.dirname(home_md)
+            os.makedirs(page_output_dir, exist_ok=True)
+            (Path(page_output_dir) / "home.md").write_text(f"# {page_title}\n")
+            self.__dump_page(homepage_id, parents=[space_key], home_md=home_md)
 
     def dump(self):
         ret = self.__confluence.get_all_spaces(
