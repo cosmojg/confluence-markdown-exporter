@@ -88,11 +88,9 @@ class Exporter:
             extra_args=["--extract-media", page_filename_media],
         )
         md_path = Path(page_filename_md)
-        md_text = md_path.read_text()
-        md_text = md_text.replace(f"{md_path.parent!s}/", "")
-        md_path.write_text(md_text)
+        md_path.write_text(md_path.read_text().replace(f"{md_path.parent!s}/", ""))
 
-    def __dump_page(self, src_id, parents):
+    def __dump_page(self, src_id, parents, home_md):
         if src_id in self.__seen:
             # this could theoretically happen if Page IDs are not unique or there is a circle
             msg = "Duplicate Page ID Found!"
@@ -116,7 +114,7 @@ class Exporter:
 
         page_output_dir = os.path.dirname(page_filename_doc)
         os.makedirs(page_output_dir, exist_ok=True)
-        (Path(page_output_dir) / "home.md").write_text(f"# {page_title}\n")
+        home_md.write_text(f"{home_md.read_text()}\n")
 
         # Download .doc from Confluence
         if not Path(page_filename_doc).is_file():
@@ -164,7 +162,11 @@ class Exporter:
 
         # recurse to process child nodes
         for child_id in child_ids:
-            self.__dump_page(child_id, parents=[*sanitized_parents, page_title])
+            self.__dump_page(
+                child_id,
+                parents=[*sanitized_parents, page_title],
+                home_md=home_md,
+            )
 
     def __dump_space(self, space):
         space_key = space["key"]
@@ -175,16 +177,15 @@ class Exporter:
         else:
             # homepage found, recurse from there
             homepage_id = space["homepage"]["id"]
-            page = self.__confluence.get_page_by_id(homepage_id, expand="body.storage")
-            page_title = page["title"]
-            page_id = page["id"]
-            self.__confluence.get_child_id_list(page_id)
             sanitized_parents = list(map(self.__sanitize, [space_key]))
             page_location = [*sanitized_parents, "home"]
-            home_md = f"{os.path.join(self.__out_dir, *page_location)}.md"
-            page_output_dir = os.path.dirname(home_md)
-            os.makedirs(page_output_dir, exist_ok=True)
-            (Path(page_output_dir) / "home.md").write_text(f"# {page_title}\n")
+            home_md = Path(f"{os.path.join(self.__out_dir, *page_location)}.md")
+            os.makedirs(str(home_md.parent), exist_ok=True)
+            home_md.write_text(
+                (
+                    f"# {self.__confluence.get_page_by_id(homepage_id, expand='body.storage')['title']}"
+                ),
+            )
             self.__dump_page(homepage_id, parents=[space_key], home_md=home_md)
 
     def dump(self):
