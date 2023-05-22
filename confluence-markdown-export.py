@@ -114,7 +114,10 @@ class Exporter:
 
         page_output_dir = os.path.dirname(page_filename_doc)
         os.makedirs(page_output_dir, exist_ok=True)
-        home_md.write_text(f"{home_md.read_text()}\n")
+        home_md.write_text(
+            f"{home_md.read_text()}\n* [{page_filename_media}]({page_filename_media})",
+        )
+        home_md.write_text(home_md.read_text().replace(f"{home_md.parent!s}/", ""))
 
         # Download .doc from Confluence
         if not Path(page_filename_doc).is_file():
@@ -181,11 +184,7 @@ class Exporter:
             page_location = [*sanitized_parents, "home"]
             home_md = Path(f"{os.path.join(self.__out_dir, *page_location)}.md")
             os.makedirs(str(home_md.parent), exist_ok=True)
-            home_md.write_text(
-                (
-                    f"# {self.__confluence.get_page_by_id(homepage_id, expand='body.storage')['title']}"
-                ),
-            )
+            home_md.write_text("# Migrated from Confluence:")
             self.__dump_page(homepage_id, parents=[space_key], home_md=home_md)
 
     def dump(self):
