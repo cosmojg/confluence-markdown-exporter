@@ -37,12 +37,32 @@ class Exporter:
         self.__space = space
 
     def __sanitize(self, page_title):
-        page_title = re.sub("[\\\\/\\[\\]-]+", "_", page_title)
+        # replace hyphen-minus (U+002D) with hyphen (U+2010)
+        page_title = re.sub("-+", "‐", page_title)
+
+        # replace solidus (U+002F) with fullwidth (U+FF0F)
+        page_title = re.sub("\\/+", "／", page_title)
+
+        # replace reverse solidus (U+005C) with fullwidth (U+FF3C)
+        page_title = re.sub("\\\+", "＼", page_title)
+
+        # replace left square bracket (U+005B) with fullwidth (U+FF3B)
+        page_title = re.sub("\\[+", "［", page_title)
+
+        # replace right square bracket (U+005D) with fullwidth (U+FF3D)
+        page_title = re.sub("\\]+", "］", page_title)
+
+        # replace space (U+0020) with hyphen-minus (U+002D)
         page_title = re.sub("\\s+", "-", page_title)
-        page_title = re.sub("\\.\\.+", ".", page_title)
+
+        # replace multiple with single
         page_title = re.sub("--+", "-", page_title)
-        page_title = re.sub("-(-|\\s)+-", "-", page_title)
-        page_title = page_title.strip("-_. ")
+        page_title = re.sub("\\.\\.+", ".", page_title)
+
+        # strip leading/trailing punctuation
+        page_title = page_title.strip("-_. ‐／＼［］-._")
+
+        # return sanitized page title
         return page_title
 
     def __download(self, page_id, page_filename_doc):
