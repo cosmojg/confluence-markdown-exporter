@@ -37,12 +37,12 @@ class Exporter:
         self.__space = space
 
     def __sanitize(self, page_title):
-        page_title = re.sub("[\\\\/\\[\\] ]+", "-", page_title)
+        page_title = re.sub("[\\\\/\\[\\]-]+", "_", page_title)
         page_title = re.sub("\\s+", "-", page_title)
         page_title = re.sub("\\.\\.+", ".", page_title)
         page_title = re.sub("--+", "-", page_title)
         page_title = re.sub("-(-|\\s)+-", "-", page_title)
-        page_title = page_title.strip("-. ")
+        page_title = page_title.strip("-_. ")
         return page_title
 
     def __download(self, page_id, page_filename_doc):
